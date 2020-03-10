@@ -10,21 +10,24 @@ Files
 *train.py - Used to load datam, train model, and save model checkpoint
 *predict.py - Takes saved model and applies to new image data, predicting image type
 
-## Use ```train.py``` --arch <Pick architecture> \
+## Use train.py
+```python train.py --arch <Pick architecture> \
                 --data_dir <Folder location of images> \
                 --save_dir'<checkpoint folder> \
                 --gpu <Use GPU for processing \
                 --epochs <Define epoch intervals> \ 
                 --learning_rate <Model Learning Rate> \
-                --hidden_units <Number of hidden units>
+                --hidden_units <Number of hidden units> ```
+                
 ## train.py Example
 ```python train.py --arch vgg11 --epochs 3```
 
-## Use ```predict.py``` --load_dir <Load from location for re-use> \
+## Use predict.py
+```python predict.py --load_dir <Load from location for re-use> \
                   --map <Label Mappings> \
                   --topk <Number of top choices to display> \
                   --gpu <Use GPU for processing> \
-                  --image <Sample Image location>
+                  --image <Sample Image location> ```
 
 ## predict.py Example
 ```python predict.py --topk 5 --load_dir checkpoint.pth```
