@@ -6,7 +6,7 @@ Steps include: 1) loaded and pre-processed 2) model is trained and validated 3) 
 to predict a type of flower
 
 Files
-*ipython notebook:  
+*ipython notebook:  Image Classifier Deep Learning Notebook
 *train.py - Used to load datam, train model, and save model checkpoint
 *predict.py - Takes saved model and applies to new image data, predicting image type
 
