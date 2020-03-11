@@ -25,6 +25,9 @@ from torchvision import datasets, transforms, models
 
 
 def arg_parser():
+    '''Function creates series of arguments for use in modules
+    
+    '''
     parser = argparse.ArgumentParser(description='Allow user choices')
     # Add optional architecture argument
     parser.add_argument('--arch', type=str, default='vgg16', help='Pick architecture')
@@ -148,21 +151,6 @@ def arch_choice(arch):
     '''
     model = getattr(models, arch)
     return model(pretrained=True)
-      
-def cat_to_name():
-    with open('cat_to_name.json', 'r') as f:
-        cat_to_name = json.load(f)
-        print(cat_to_name)
-    return cat_to_name
-
-def model_forward(arch='vgg16'):
-    if type(arch) == type(None):
-        model = models.vgg16(pretrained=True)
-        print('default model = vgg16')
-    else:
-        exec('model = models.{}(pretrained=True)'.format(arch))
- 
-    return model
              
 def initial_classifier(model, hidden_units):
     '''Return classifier layer

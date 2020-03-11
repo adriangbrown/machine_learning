@@ -24,7 +24,6 @@ def arg_parser():
     parser.add_argument('--gpu', type=bool, default=True, help='Use GPU for processing')
     parser.add_argument('--image', type=str, default = 'flowers/test/19/image_06155.jpg', help='Sample Image')
 
-
     args = parser.parse_args()
     return args
 
