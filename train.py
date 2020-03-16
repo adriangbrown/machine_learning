@@ -15,15 +15,6 @@ import torch.nn.functional as F
 from matplotlib import pyplot as plt
 from torchvision import datasets, transforms, models
 
-# USAGE
-# python train.py /flowers
-#  --arch <network architecture>
-#  --save_dir <checkpoint folder>
-#  --gpu
-#  --epoch <epoch count>
-#  --hidden_units <hidden units pre-classifier>
-
-
 def arg_parser():
     '''Function creates series of arguments for use in modules
     
@@ -36,7 +27,6 @@ def arg_parser():
     parser.add_argument('--gpu', type=bool, default=True, help='Use GPU for processing')
     parser.add_argument('--epochs', type=int, default=3, help='Define epoch intervals')
     parser.add_argument('--learning_rate', type=float, default=.003, help='Learning Rate Entry')
-
     parser.add_argument('--hidden_units', type=int, default=512, help='Define number of hidden units')
 
     args = parser.parse_args()
@@ -48,14 +38,13 @@ def data_folders(data_dir):
     Args:
         data_dir (str): path to images
     Returns:
-        data_folder_dict: paths to data folders
+        train, valid and test data locations
     """
     
-    data_folder_dict = dict()   
-    data_folder_dict['train'] = data_dir + '/train'
-    data_folder_dict['valid'] = data_dir + '/valid'
-    data_folder_dict['test'] = data_dir + '/test'
-    return data_folder_dict
+    train_dir = data_dir + '/train'
+    valid_dir = data_dir + '/valid'
+    test_dir = data_dir + '/test'
+    return train_dir, valid_dir, test_dir
     
     
 def data_transformer():
@@ -64,11 +53,10 @@ def data_transformer():
     Args:
         None
     Returns:
-        transforms_dict (dict): Pipelines of data transforms for the 
-            training, validation, and testing sets
+        training, validation, and testing transformations
+        
     """
-    transforms_dict = dict()
-    transforms_dict['train'] = transforms.Compose([
+    train_transforms = transforms.Compose([
         transforms.RandomRotation(30),
         transforms.RandomResizedCrop(224),
         transforms.RandomHorizontalFlip(),
@@ -76,14 +64,14 @@ def data_transformer():
         transforms.Normalize([0.485, 0.456, 0.406], 
                              [0.229, 0.224, 0.225])
         ])
-    transforms_dict['valid'] = transforms.Compose([
+    valid_transforms = transforms.Compose([
         transforms.Resize(256),
         transforms.CenterCrop(224),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], 
                              [0.229, 0.224, 0.225])
         ])
-    transforms_dict['test'] = transforms.Compose([
+    test_transforms = transforms.Compose([
         transforms.Resize(256),
         transforms.CenterCrop(224),
         transforms.ToTensor(),
@@ -91,54 +79,51 @@ def data_transformer():
                              [0.229, 0.224, 0.225])
         ])
     
-    return transforms_dict
+    return train_transforms, valid_transforms, test_transforms
     
-def data_loader(data_folder_dict, transforms_dict):
+def data_loader(train_dir, valid_dir, test_dir, train_transforms, valid_transforms, test_transforms):
     """Load datasets and define the dataloaders
     
     Args:
-        data_folder_dict (dict):  paths to data sets 
-        transforms_dict (dict): data transformations
+        train_dir, valid_dir, test_dir:  location of data
+        train_transforms, valid_transforms_test_transforms:  data transformation specs
     Returns:
-         dataloader_dict (dict): Dataloaders
+         train_loader, valid_loader, test_loader:  data loading specifications
          class_to_idx_dict (dict): Mapping from class number to tensor 
             index
     """
-    # Load the datasets with ImageFolder
-    datasets_dict = dict()
-    
-    datasets_dict['train'] = datasets.ImageFolder(
-        data_folder_dict['train'], 
-        transform=transforms_dict['train']
+    # ImageFolder data loading
+    train_data = datasets.ImageFolder(
+        train_dir, 
+        transform=train_transforms
         )
-    datasets_dict['valid'] = datasets.ImageFolder(
-        data_folder_dict['valid'], 
-        transform=transforms_dict['valid']
+    valid_data = datasets.ImageFolder(
+        valid_dir, 
+        transform=valid_transforms
         )
-    datasets_dict['test'] = datasets.ImageFolder(
-        data_folder_dict['test'], 
-        transform=transforms_dict['test']
+    test_data = datasets.ImageFolder(
+        test_dir, 
+        transform=test_transforms
         )
    
     # Flower folder number to index mapping
-    class_to_idx_dict = datasets_dict['train'].class_to_idx
+    class_to_idx_dict = train_data.class_to_idx
     
-    # Using the image datasets and the trainforms, define dataloaders
-    dataloaders_dict = dict()
-    dataloaders_dict['train'] = torch.utils.data.DataLoader(
-        datasets_dict['train'], 
+    # Perform data loading
+    train_loader = torch.utils.data.DataLoader(
+        train_data, 
         batch_size=32, shuffle=True
         )
-    dataloaders_dict['valid'] = torch.utils.data.DataLoader(
-        datasets_dict['train'], 
+    valid_loader = torch.utils.data.DataLoader(
+        valid_data, 
         batch_size=32, shuffle=True
         )
-    dataloaders_dict['test'] = torch.utils.data.DataLoader(
-        datasets_dict['train'], 
+    test_loader = torch.utils.data.DataLoader(
+        test_data, 
         batch_size=32, shuffle=True
         )
     
-    return dataloaders_dict, class_to_idx_dict
+    return train_loader, valid_loader, test_loader, class_to_idx_dict
 
 def arch_choice(arch):
     '''Returned pre-trained pytorch model
@@ -166,10 +151,10 @@ def initial_classifier(model, hidden_units):
 
     classifier = nn.Sequential(OrderedDict([
         ('dropout_1', nn.Dropout(0.55)),
-        ('fc1', nn.Linear(input_features, hidden_units)),
+        ('fc1', nn.Linear(input_features, hidden_units, bias=True)),
         ('relu', nn.ReLU()),
         ('dropout', nn.Dropout(0.55)),
-        ('fc2', nn.Linear(hidden_units, 102)),
+        ('fc2', nn.Linear(hidden_units, 102, bias=True)),
         ('output', nn.LogSoftmax(dim=1))
          ]))
     
@@ -185,27 +170,32 @@ def validation(model, validloader, gpu):
     '''
     criterion = nn.NLLLoss()
 
-    running_loss = 0
+    valid_loss = 0
     print_every = 50
-    steps = 0
-    valid_correct = 0
-    valid_total = 0
+    correct = 0
+    population = 0
+    accuracy = 0
     
     with torch.no_grad():
         for data in validloader:
-            steps += 1
-            images, labels = data
+            inputs, labels = data
             if gpu == True:
-                images, labels = images.to('cuda'), labels.to('cuda')
-            output = model(images)
-            running_loss += criterion(output, labels)
+                inputs, labels = inputs.to('cuda'), labels.to('cuda')
+            output = model(inputs)
+            valid_loss += criterion(output, labels).item()
+        
+            ps = torch.exp(output)
+            match = (labels.data == ps.max(dim=1)[1])
+            accuracy += match.type(torch.FloatTensor).mean()
+            '''
             _, predicted = torch.max(output.data, 1)
             valid_total += labels.size(0)
-            valid_correct += (predicted == labels).sum().item()
+            correct += (predicted == labels).sum().item()
             if steps % print_every == 0:
-                print('Validation Loss: {:.4f}'.format(running_loss/print_every))
+                print('Validation Loss: {:.4f}'.format(valid_loss/print_every))
                 running_loss = 0
-    print('Validation Accuracy: {1:.1%} \n {0:d} validation Images'.format(valid_total, valid_correct / valid_total))
+            '''
+    print('Accuracy', accuracy/len(validloader))
                 
 def trainer(model, trainloader, epochs, learning_rate, gpu):
     '''Train the model
@@ -245,10 +235,10 @@ def trainer(model, trainloader, epochs, learning_rate, gpu):
 def main():
     args = arg_parser()
     
-    data_folder_dict = data_folders(args.data_dir)
-    transforms_dict = data_transformer()
+    train_dir, valid_dir, test_dir = data_folders(args.data_dir)
+    train_transforms, valid_transforms, test_transforms = data_transformer()
     
-    dataloaders_dict, class_to_idx_dict = data_loader(data_folder_dict, transforms_dict)
+    train_loader, valid_loader, test_loader, class_to_idx_dict = data_loader(train_dir, valid_dir, test_dir, train_transforms, valid_transforms, test_transforms)
     
     # Import canned pre-trained model
     model = arch_choice(args.arch)
@@ -260,8 +250,8 @@ def main():
 
     model.classifier = initial_classifier(model, hidden_units=args.hidden_units)
 
-    trainer(model, dataloaders_dict['train'], args.epochs, args.learning_rate, args.gpu)
-    validation(model, dataloaders_dict['valid'], args.gpu)
+    trainer(model, train_loader, args.epochs, args.learning_rate, args.gpu)
+    validation(model, valid_loader, args.gpu)
     
     checkpoint = {
         'model': model,

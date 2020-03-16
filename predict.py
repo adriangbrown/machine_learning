@@ -17,7 +17,7 @@ from torchvision import datasets, transforms, models
 
 def arg_parser():
     parser = argparse.ArgumentParser(description='Allow user choices')
-    # Add optional architecture argument
+
     parser.add_argument('--load_dir', type=str, help='Load from location for re-use')
     parser.add_argument('--map', type=str, default = 'cat_to_name.json', help ='Augment mappings')
     parser.add_argument('--topk', type=int, default=2, help='Top choices')
@@ -66,16 +66,7 @@ def process_image(image):
     norm_image = im.transpose(2,0,1)
     return norm_image
 
-def image_to_tensor(np_image):
-    np_image = np.resize(np_image,(1, 3, 224, 224))
-    
-    # NumPy to torch
-    img_tensor = torch.from_numpy(np_image)
-    img_tensor = img_tensor.type(torch.FloatTensor)
-    
-    return img_tensor
-
-def predict(model, image_tensor, topk, gpu):
+def predict(model, np_image, topk, gpu):
     """Predict the class(es) of image using trained deep learning model
     
     Args:
@@ -85,29 +76,34 @@ def predict(model, image_tensor, topk, gpu):
         in_args_gpu (bool): User input
  
     """
-    if gpu == True:
-        model.to('cuda')
-        image_tensor = image_tensor.to('cuda')
-    # Run model in evaluation mode
+
+    # Convert image to tensor
+    np_image = np.expand_dims(np_image, axis=0)
+    img_tensor = torch.from_numpy(np_image)
+    # Convert to float
+    float_tensor = img_tensor.type(torch.FloatTensor)
+    
+    image_pred = float_tensor.to('cuda')
+   
     model.eval()
+    
     with torch.no_grad():
-        outputs = model(image_tensor)
-    # From softmax to probabilities
-    probs = torch.exp(outputs.data) 
-    # Find topk probabilities and indices 
-    top_probs, indices = probs.topk(k=topk) 
+        outputs = model(image_pred)
+  
+    probs = torch.exp(outputs) 
+    # Find topk 
+    probs, labels = probs.topk(k=topk) 
     # From torch to numpy to lists
     if gpu == True:
-        top_probs, indices = top_probs.to('cpu'), indices.to('cpu')
-    top_probs, indices = top_probs.numpy(), indices.numpy()
-    top_probs, indices = top_probs[0].tolist(), indices[0].tolist()
-    # Find the class using the indices (reverse dictionary first)
-    idx_to_class =  {val: key for key, val in    
-                                      model.class_to_idx.items()}
-    top_labels = [idx_to_class[lab] for lab in indices]
-    top_flowers = [idx_to_class[lab] for lab in indices]
+        probs, labels = probs.to('cpu'), labels.to('cpu')
+    probs, labels = probs.numpy(), labels.numpy()
+    probs, labels = probs[0].tolist(), labels[0].tolist()
     
-    return top_probs, top_labels, top_flowers
+    idx_to_class = {val: key for key, val in    
+                                      model.class_to_idx.items()}
+    # Map labels to class in index\
+    labels = [idx_to_class[lab] for lab in labels]
+    return probs, labels
     
 def main():
     args = arg_parser()
@@ -119,19 +115,15 @@ def main():
     image = Image.open(img_path)
         
     np_image = process_image(image)
-    
-    image_tensor = image_to_tensor(np_image)
+    cat_to_name = cat_mapper(filename=args.map)
 
-    probs, top_labels, top_flowers = predict(model, image_tensor, args.topk, args.gpu) 
-    print(probs, top_labels, top_flowers)
+    probs, labels = predict(model, np_image, args.topk, args.gpu) 
+    print(probs, labels)
     
-    class_name_dict = cat_mapper(filename=args.map)
-    flower_names = [class_name_dict[key] for key in top_flowers]
-    labels = [class_name_dict[key] for key in top_labels]
+    labels = [cat_to_name[key] for key in labels]
     
     print('\n Filepath to image: ', img_path, '\n',
-          '\n  Top labels: ', top_labels,
-          '\n  Flower names: ', flower_names,
+          '\n  Top labels: ', labels,
           '\n  Probabilities: ', probs)
     
 if __name__ == '__main__':
